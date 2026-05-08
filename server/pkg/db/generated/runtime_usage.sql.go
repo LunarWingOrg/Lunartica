@@ -54,8 +54,7 @@ SELECT
     SUM(tu.cache_write_tokens)::bigint AS cache_write_tokens,
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-WHERE atq.runtime_id = $1
+WHERE tu.runtime_id = $1
   AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
 GROUP BY EXTRACT(HOUR FROM tu.created_at), tu.model
 ORDER BY hour, tu.model
@@ -119,8 +118,7 @@ SELECT
     SUM(tu.cache_read_tokens)::bigint AS cache_read_tokens,
     SUM(tu.cache_write_tokens)::bigint AS cache_write_tokens
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-WHERE atq.runtime_id = $1
+WHERE tu.runtime_id = $1
   AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
 GROUP BY DATE(tu.created_at), tu.provider, tu.model
 ORDER BY DATE(tu.created_at) DESC, tu.provider, tu.model
@@ -184,7 +182,7 @@ SELECT
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
 JOIN agent_task_queue atq ON atq.id = tu.task_id
-WHERE atq.runtime_id = $1
+WHERE tu.runtime_id = $1
   AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
 GROUP BY atq.agent_id, tu.model
 ORDER BY atq.agent_id, tu.model
@@ -206,11 +204,12 @@ type ListRuntimeUsageByAgentRow struct {
 }
 
 // Per-(agent, model) token aggregates for a runtime since a cutoff. Powers
-// the runtime-detail "Cost by agent" tab. task_usage only carries task_id,
-// so we join the queue to expose agent_id. The model dimension is kept on
-// purpose: cost is computed client-side from a per-model pricing table, so
-// collapsing models server-side would erase the information needed to do
-// that arithmetic. The client groups by agent_id and sums cost per agent.
+// the runtime-detail "Cost by agent" tab. task_usage carries runtime_id for
+// efficient filtering, and we join the queue only to expose agent_id. The
+// model dimension is kept on purpose: cost is computed client-side from a
+// per-model pricing table, so collapsing models server-side would erase the
+// information needed to do that arithmetic. The client groups by agent_id and
+// sums cost per agent.
 func (q *Queries) ListRuntimeUsageByAgent(ctx context.Context, arg ListRuntimeUsageByAgentParams) ([]ListRuntimeUsageByAgentRow, error) {
 	rows, err := q.db.Query(ctx, listRuntimeUsageByAgent, arg.RuntimeID, arg.Since)
 	if err != nil {
@@ -228,6 +227,72 @@ func (q *Queries) ListRuntimeUsageByAgent(ctx context.Context, arg ListRuntimeUs
 			&i.CacheReadTokens,
 			&i.CacheWriteTokens,
 			&i.TaskCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceRuntimeUsage = `-- name: ListWorkspaceRuntimeUsage :many
+SELECT
+    tu.runtime_id,
+    DATE(tu.created_at) AS date,
+    tu.provider,
+    tu.model,
+    SUM(tu.input_tokens)::bigint AS input_tokens,
+    SUM(tu.output_tokens)::bigint AS output_tokens,
+    SUM(tu.cache_read_tokens)::bigint AS cache_read_tokens,
+    SUM(tu.cache_write_tokens)::bigint AS cache_write_tokens
+FROM task_usage tu
+JOIN agent_runtime ar ON ar.id = tu.runtime_id
+WHERE ar.workspace_id = $1
+  AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
+GROUP BY tu.runtime_id, DATE(tu.created_at), tu.provider, tu.model
+ORDER BY tu.runtime_id, DATE(tu.created_at) DESC, tu.provider, tu.model
+`
+
+type ListWorkspaceRuntimeUsageParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+}
+
+type ListWorkspaceRuntimeUsageRow struct {
+	RuntimeID        pgtype.UUID `json:"runtime_id"`
+	Date             pgtype.Date `json:"date"`
+	Provider         string      `json:"provider"`
+	Model            string      `json:"model"`
+	InputTokens      int64       `json:"input_tokens"`
+	OutputTokens     int64       `json:"output_tokens"`
+	CacheReadTokens  int64       `json:"cache_read_tokens"`
+	CacheWriteTokens int64       `json:"cache_write_tokens"`
+}
+
+// Batch form for the runtimes list. It returns the same daily model buckets as
+// ListRuntimeUsage, but for every runtime in a workspace so the UI avoids one
+// aggregate query per runtime row.
+func (q *Queries) ListWorkspaceRuntimeUsage(ctx context.Context, arg ListWorkspaceRuntimeUsageParams) ([]ListWorkspaceRuntimeUsageRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceRuntimeUsage, arg.WorkspaceID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkspaceRuntimeUsageRow{}
+	for rows.Next() {
+		var i ListWorkspaceRuntimeUsageRow
+		if err := rows.Scan(
+			&i.RuntimeID,
+			&i.Date,
+			&i.Provider,
+			&i.Model,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
 		); err != nil {
 			return nil, err
 		}

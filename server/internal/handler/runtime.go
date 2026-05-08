@@ -123,6 +123,39 @@ func (h *Handler) GetRuntimeUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// GetWorkspaceRuntimeUsage returns daily token usage for all runtimes in a
+// workspace in one aggregate query. The runtime list uses this to avoid a
+// separate ListRuntimeUsage query per row.
+func (h *Handler) GetWorkspaceRuntimeUsage(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	since := parseSinceParam(r, 14)
+
+	rows, err := h.Queries.ListWorkspaceRuntimeUsage(r.Context(), db.ListWorkspaceRuntimeUsageParams{
+		WorkspaceID: parseUUID(workspaceID),
+		Since:       since,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list runtime usage")
+		return
+	}
+
+	resp := make([]RuntimeUsageResponse, len(rows))
+	for i, row := range rows {
+		resp[i] = RuntimeUsageResponse{
+			RuntimeID:        uuidToString(row.RuntimeID),
+			Date:             row.Date.Time.Format("2006-01-02"),
+			Provider:         row.Provider,
+			Model:            row.Model,
+			InputTokens:      row.InputTokens,
+			OutputTokens:     row.OutputTokens,
+			CacheReadTokens:  row.CacheReadTokens,
+			CacheWriteTokens: row.CacheWriteTokens,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // GetRuntimeTaskActivity returns hourly task activity distribution for a runtime.
 func (h *Handler) GetRuntimeTaskActivity(w http.ResponseWriter, r *http.Request) {
 	runtimeID := chi.URLParam(r, "runtimeId")

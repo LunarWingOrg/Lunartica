@@ -862,9 +862,9 @@ func TestDaemonRegister_MergesLegacyDaemonIDRuntime(t *testing.T) {
 		testPool.Exec(context.Background(), `DELETE FROM agent WHERE id = $1`, legacyAgentID)
 	})
 
-	// An issue + task also bound to the legacy runtime (tasks have ON DELETE
-	// CASCADE, so without reassignment deleting the legacy row would silently
-	// drop historical tasks).
+	// An issue + task + usage row also bound to the legacy runtime (tasks and
+	// usage have ON DELETE CASCADE, so without reassignment deleting the legacy
+	// row would silently drop historical records).
 	var legacyIssueID, legacyTaskID string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO issue (workspace_id, title, status, priority, creator_id, creator_type, number, position)
@@ -885,6 +885,13 @@ func TestDaemonRegister_MergesLegacyDaemonIDRuntime(t *testing.T) {
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE id = $1`, legacyTaskID)
 	})
+
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens)
+		VALUES ($1, $2, 'claude', 'claude-3-5-sonnet', 123, 0)
+	`, legacyTaskID, legacyRuntimeID); err != nil {
+		t.Fatalf("seed legacy task usage: %v", err)
+	}
 
 	// Register under the new stable UUID, declaring the prior hostname-derived
 	// id as legacy. The handler should merge the legacy row into the new one.
@@ -933,6 +940,16 @@ func TestDaemonRegister_MergesLegacyDaemonIDRuntime(t *testing.T) {
 	}
 	if taskRuntimeID != newRuntimeID {
 		t.Fatalf("task not reassigned: got runtime_id=%s, want %s", taskRuntimeID, newRuntimeID)
+	}
+
+	// Usage should be reassigned with the task, otherwise deleting the old
+	// runtime would cascade away historical token totals.
+	var usageRuntimeID string
+	if err := testPool.QueryRow(ctx, `SELECT runtime_id FROM task_usage WHERE task_id = $1`, legacyTaskID).Scan(&usageRuntimeID); err != nil {
+		t.Fatalf("read task usage runtime_id: %v", err)
+	}
+	if usageRuntimeID != newRuntimeID {
+		t.Fatalf("task usage not reassigned: got runtime_id=%s, want %s", usageRuntimeID, newRuntimeID)
 	}
 
 	// Legacy runtime row must be gone — no more "online + offline" duplicates

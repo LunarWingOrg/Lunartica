@@ -173,6 +173,14 @@ UPDATE agent_task_queue
 SET runtime_id = @new_runtime_id
 WHERE runtime_id = @old_runtime_id;
 
+-- name: ReassignTaskUsageToRuntime :execrows
+-- Keeps denormalized task_usage.runtime_id in sync when legacy runtime rows
+-- are merged. This must run before deleting old_runtime_id because task_usage
+-- also has a runtime FK for fast usage aggregation.
+UPDATE task_usage
+SET runtime_id = @new_runtime_id
+WHERE runtime_id = @old_runtime_id;
+
 -- name: RecordRuntimeLegacyDaemonID :exec
 -- Remembers the most recent hostname-derived daemon_id that was merged into
 -- this row. Useful for debugging when tracing back why a given runtime row

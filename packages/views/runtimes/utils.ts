@@ -447,8 +447,7 @@ export function aggregateCostByHour(rows: RuntimeUsageByHour[]): CostByKey[] {
 // "previous" window for the runtime-list ↑/↓ delta).
 //
 // Walks the same daily-grain `RuntimeUsage` rows that `aggregateByDate` uses,
-// so the runtime-list cost stays consistent with the runtime-detail KPIs
-// (and crucially, hits the same TanStack Query cache key).
+// so the runtime-list cost stays consistent with the runtime-detail KPIs.
 export function computeCostInWindow(
   rows: readonly RuntimeUsage[],
   daysBack: number,

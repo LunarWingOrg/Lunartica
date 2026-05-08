@@ -45,7 +45,7 @@ func (q *Queries) GetIssueUsageSummary(ctx context.Context, issueID pgtype.UUID)
 }
 
 const getTaskUsage = `-- name: GetTaskUsage :many
-SELECT id, task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM task_usage
+SELECT id, task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at, runtime_id FROM task_usage
 WHERE task_id = $1
 ORDER BY model
 `
@@ -69,6 +69,7 @@ func (q *Queries) GetTaskUsage(ctx context.Context, taskID pgtype.UUID) ([]TaskU
 			&i.CacheReadTokens,
 			&i.CacheWriteTokens,
 			&i.CreatedAt,
+			&i.RuntimeID,
 		); err != nil {
 			return nil, err
 		}
@@ -90,9 +91,8 @@ SELECT
     SUM(tu.cache_write_tokens)::bigint AS total_cache_write_tokens,
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-JOIN agent a ON a.id = atq.agent_id
-WHERE a.workspace_id = $1
+JOIN agent_runtime ar ON ar.id = tu.runtime_id
+WHERE ar.workspace_id = $1
   AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
 GROUP BY DATE(tu.created_at), tu.model
 ORDER BY DATE(tu.created_at) DESC, tu.model
@@ -154,9 +154,8 @@ SELECT
     SUM(tu.cache_write_tokens)::bigint AS total_cache_write_tokens,
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-JOIN agent a ON a.id = atq.agent_id
-WHERE a.workspace_id = $1
+JOIN agent_runtime ar ON ar.id = tu.runtime_id
+WHERE ar.workspace_id = $1
   AND tu.created_at >= DATE_TRUNC('day', $2::timestamptz)
 GROUP BY tu.model
 ORDER BY (SUM(tu.input_tokens) + SUM(tu.output_tokens)) DESC
@@ -206,10 +205,11 @@ func (q *Queries) GetWorkspaceUsageSummary(ctx context.Context, arg GetWorkspace
 }
 
 const upsertTaskUsage = `-- name: UpsertTaskUsage :exec
-INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (task_id, provider, model)
 DO UPDATE SET
+    runtime_id = EXCLUDED.runtime_id,
     input_tokens = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
@@ -218,6 +218,7 @@ DO UPDATE SET
 
 type UpsertTaskUsageParams struct {
 	TaskID           pgtype.UUID `json:"task_id"`
+	RuntimeID        pgtype.UUID `json:"runtime_id"`
 	Provider         string      `json:"provider"`
 	Model            string      `json:"model"`
 	InputTokens      int64       `json:"input_tokens"`
@@ -229,6 +230,7 @@ type UpsertTaskUsageParams struct {
 func (q *Queries) UpsertTaskUsage(ctx context.Context, arg UpsertTaskUsageParams) error {
 	_, err := q.db.Exec(ctx, upsertTaskUsage,
 		arg.TaskID,
+		arg.RuntimeID,
 		arg.Provider,
 		arg.Model,
 		arg.InputTokens,

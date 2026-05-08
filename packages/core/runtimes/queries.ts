@@ -5,6 +5,8 @@ export const runtimeKeys = {
   all: (wsId: string) => ["runtimes", wsId] as const,
   list: (wsId: string) => [...runtimeKeys.all(wsId), "list"] as const,
   listMine: (wsId: string) => [...runtimeKeys.all(wsId), "list", "mine"] as const,
+  usageByWorkspace: (wsId: string, days: number) =>
+    [...runtimeKeys.all(wsId), "usage", days] as const,
   usage: (rid: string, days: number) =>
     ["runtimes", "usage", rid, days] as const,
   usageByAgent: (rid: string, days: number) =>
@@ -14,14 +16,22 @@ export const runtimeKeys = {
   latestVersion: () => ["runtimes", "latestVersion"] as const,
 };
 
-// Per-runtime usage. Used by the list view (each row pulls its own activity
-// sparkline + 30d cost) and by the detail page. TanStack Query naturally
-// deduplicates concurrent calls for the same runtime, so multiple components
-// observing the same runtimeId share one network request.
+// Per-runtime usage for detail views. The runtimes list uses the workspace
+// batch query below to avoid one aggregate query per visible row.
 export function runtimeUsageOptions(runtimeId: string, days: number) {
   return queryOptions({
     queryKey: runtimeKeys.usage(runtimeId, days),
     queryFn: () => api.getRuntimeUsage(runtimeId, { days }),
+    staleTime: 60 * 1000,
+  });
+}
+
+// Batched usage for the runtimes list. One workspace-level aggregate replaces
+// one per-row aggregate query while preserving the same RuntimeUsage row shape.
+export function runtimeUsageByWorkspaceOptions(wsId: string, days: number) {
+  return queryOptions({
+    queryKey: runtimeKeys.usageByWorkspace(wsId, days),
+    queryFn: () => api.getRuntimesUsage({ workspace_id: wsId, days }),
     staleTime: 60 * 1000,
   });
 }

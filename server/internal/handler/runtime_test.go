@@ -125,9 +125,9 @@ func TestGetRuntimeUsage_BucketsByUsageTime(t *testing.T) {
 			t.Fatalf("insert task: %v", err)
 		}
 		if _, err := testPool.Exec(ctx, `
-			INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, created_at)
-			VALUES ($1, 'claude', 'claude-3-5-sonnet', $2, 0, $3)
-		`, taskID, inputTokens, usageAt); err != nil {
+			INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens, created_at)
+			VALUES ($1, $2, 'claude', 'claude-3-5-sonnet', $3, 0, $4)
+		`, taskID, runtimeID, inputTokens, usageAt); err != nil {
 			t.Fatalf("insert task_usage: %v", err)
 		}
 		t.Cleanup(func() {
@@ -171,5 +171,78 @@ func TestGetRuntimeUsage_BucketsByUsageTime(t *testing.T) {
 	// when ?days=N is interpreted as a rolling window instead of calendar days.
 	if byDate[yesterdayKey] != 2000 {
 		t.Errorf("yesterday morning task: yesterday bucket expected 2000 input tokens, got %d (full map: %v)", byDate[yesterdayKey], byDate)
+	}
+}
+
+func TestGetWorkspaceRuntimeUsage_BatchesRuntimeRows(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+
+	var runtimeID string
+	if err := testPool.QueryRow(ctx, `
+		SELECT id FROM agent_runtime WHERE workspace_id = $1 LIMIT 1
+	`, testWorkspaceID).Scan(&runtimeID); err != nil {
+		t.Fatalf("fetch runtime: %v", err)
+	}
+	var agentID string
+	if err := testPool.QueryRow(ctx, `
+		SELECT id FROM agent WHERE workspace_id = $1 LIMIT 1
+	`, testWorkspaceID).Scan(&agentID); err != nil {
+		t.Fatalf("fetch agent: %v", err)
+	}
+
+	var issueID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO issue (workspace_id, title, creator_id, creator_type)
+		VALUES ($1, 'workspace runtime usage test', $2, 'member')
+		RETURNING id
+	`, testWorkspaceID, testUserID).Scan(&issueID); err != nil {
+		t.Fatalf("create issue: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(ctx, `DELETE FROM issue WHERE id = $1`, issueID)
+	})
+
+	var taskID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent_task_queue (agent_id, issue_id, runtime_id, status, created_at)
+		VALUES ($1, $2, $3, 'completed', now())
+		RETURNING id
+	`, agentID, issueID, runtimeID).Scan(&taskID); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(ctx, `DELETE FROM agent_task_queue WHERE id = $1`, taskID)
+	})
+
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens, created_at)
+		VALUES ($1, $2, 'claude', 'claude-3-5-sonnet', 1234, 0, now())
+	`, taskID, runtimeID); err != nil {
+		t.Fatalf("insert task_usage: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := newRequest("GET", "/api/runtimes/usage?days=1", nil)
+	testHandler.GetWorkspaceRuntimeUsage(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetWorkspaceRuntimeUsage: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp []RuntimeUsageResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	var total int64
+	for _, row := range resp {
+		if row.RuntimeID == runtimeID && row.Model == "claude-3-5-sonnet" {
+			total += row.InputTokens
+		}
+	}
+	if total < 1234 {
+		t.Fatalf("expected batched runtime usage to include inserted row, got total %d in response %+v", total, resp)
 	}
 }

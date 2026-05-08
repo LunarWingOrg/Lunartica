@@ -60,9 +60,9 @@ func TestWorkspaceUsage_BucketsByUsageTime(t *testing.T) {
 			t.Fatalf("insert task: %v", err)
 		}
 		if _, err := testPool.Exec(ctx, `
-			INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, created_at)
-			VALUES ($1, 'claude', 'claude-3-5-sonnet', $2, 0, $3)
-		`, taskID, inputTokens, usageAt); err != nil {
+			INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens, created_at)
+			VALUES ($1, $2, 'claude', 'claude-3-5-sonnet', $3, 0, $4)
+		`, taskID, runtimeID, inputTokens, usageAt); err != nil {
 			t.Fatalf("insert task_usage: %v", err)
 		}
 		t.Cleanup(func() {
@@ -70,7 +70,7 @@ func TestWorkspaceUsage_BucketsByUsageTime(t *testing.T) {
 		})
 	}
 
-	insertTaskWithUsage(yesterdayLate, todayEarly, 1000)         // cross-midnight
+	insertTaskWithUsage(yesterdayLate, todayEarly, 1000)          // cross-midnight
 	insertTaskWithUsage(yesterdayMorning, yesterdayMorning, 2000) // full-day yesterday
 
 	// /api/usage/daily — daily breakdown.

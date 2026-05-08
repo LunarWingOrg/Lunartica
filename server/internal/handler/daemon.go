@@ -422,6 +422,14 @@ func (h *Handler) mergeLegacyRuntimes(r *http.Request, registered db.AgentRuntim
 				slog.Warn("legacy runtime merge: reassign tasks failed", "legacy_daemon_id", legacyID, "old_runtime_id", oldID, "new_runtime_id", newID, "error", err)
 				continue
 			}
+			usageRows, err := h.Queries.ReassignTaskUsageToRuntime(r.Context(), db.ReassignTaskUsageToRuntimeParams{
+				NewRuntimeID: registered.ID,
+				OldRuntimeID: old.ID,
+			})
+			if err != nil {
+				slog.Warn("legacy runtime merge: reassign task usage failed", "legacy_daemon_id", legacyID, "old_runtime_id", oldID, "new_runtime_id", newID, "error", err)
+				continue
+			}
 			if err := h.Queries.RecordRuntimeLegacyDaemonID(r.Context(), db.RecordRuntimeLegacyDaemonIDParams{
 				ID:             registered.ID,
 				LegacyDaemonID: strToText(legacyID),
@@ -440,6 +448,7 @@ func (h *Handler) mergeLegacyRuntimes(r *http.Request, registered db.AgentRuntim
 				"provider", provider,
 				"agents_reassigned", agents,
 				"tasks_reassigned", tasks,
+				"task_usage_reassigned", usageRows,
 			)
 		}
 	}
@@ -1410,7 +1419,8 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 
 	// Verify the caller owns this task's workspace.
-	if _, ok := h.requireDaemonTaskAccess(w, r, taskID); !ok {
+	task, ok := h.requireDaemonTaskAccess(w, r, taskID)
+	if !ok {
 		return
 	}
 
@@ -1424,7 +1434,8 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 
 	for _, u := range req.Usage {
 		if err := h.Queries.UpsertTaskUsage(r.Context(), db.UpsertTaskUsageParams{
-			TaskID:           parseUUID(taskID),
+			TaskID:           task.ID,
+			RuntimeID:        task.RuntimeID,
 			Provider:         u.Provider,
 			Model:            u.Model,
 			InputTokens:      u.InputTokens,

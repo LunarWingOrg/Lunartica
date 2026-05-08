@@ -8,13 +8,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useQuery } from "@tanstack/react-query";
-import type { AgentRuntime, MemberWithUser } from "@multica/core/types";
+import type {
+  AgentRuntime,
+  MemberWithUser,
+  RuntimeUsage,
+} from "@multica/core/types";
 import { deriveWorkload } from "@multica/core/agents";
-import {
-  deriveRuntimeHealth,
-  runtimeUsageOptions,
-} from "@multica/core/runtimes";
+import { deriveRuntimeHealth } from "@multica/core/runtimes";
 import { useDeleteRuntime } from "@multica/core/runtimes/mutations";
 import {
   AlertDialog,
@@ -51,9 +51,7 @@ import {
 import { useT } from "../../i18n";
 
 // Per-row data assembled at the page level. The columns reach into
-// `row.original` and never pull their own data — except for the per-runtime
-// usage query in CostCell, which fetches its own narrow 14-day window
-// (just enough for the cell's 7d cost + 7d prior-window delta).
+// `row.original` and never pull their own row-level network data.
 export interface RuntimeRow {
   runtime: AgentRuntime;
   ownerMember: MemberWithUser | null;
@@ -87,7 +85,10 @@ interface CreateColumnsArgs {
   wsId: string;
   now: number;
   t: RuntimesT;
+  usageByRuntime: Map<string, RuntimeUsage[]>;
 }
+
+export const RUNTIME_LIST_USAGE_DAYS = 14;
 
 export function createRuntimeColumns({
   showOwner,
@@ -95,6 +96,7 @@ export function createRuntimeColumns({
   wsId,
   now,
   t,
+  usageByRuntime,
 }: CreateColumnsArgs): ColumnDef<RuntimeRow>[] {
   const cols: ColumnDef<RuntimeRow>[] = [
     {
@@ -165,9 +167,13 @@ export function createRuntimeColumns({
     },
     {
       id: "cost",
-      header: () => <div className="text-right">{t(($) => $.list.col_cost)}</div>,
+      header: () => (
+        <div className="text-right">{t(($) => $.list.col_cost)}</div>
+      ),
       size: COL_WIDTHS.cost,
-      cell: ({ row }) => <CostCell runtimeId={row.original.runtime.id} />,
+      cell: ({ row }) => (
+        <CostCell usage={usageByRuntime.get(row.original.runtime.id) ?? []} />
+      ),
     },
     {
       id: "cli",
@@ -324,21 +330,10 @@ function WorkloadCell({
   );
 }
 
-// Per-row cost — only renders a 7d total + delta vs the prior 7d, so we
-// only need 14 days of usage. Previously this fetched a 180-day window to
-// share the cache key with the runtime-detail page, but that turned the
-// list page into N × 180d in-line aggregations against `task_usage` (one
-// per runtime row) and dominated DB load for this view. Detail still
-// fetches its own 180d window on navigation; the cold-load difference for
-// detail is one extra request, while the steady-state savings on the list
-// page are large.
-const COST_CELL_DAYS = 14;
-
-function CostCell({ runtimeId }: { runtimeId: string }) {
+// Per-row cost renders a 7d total + delta vs the prior 7d, so the list page
+// fetches one 14-day workspace batch and each row reads its own slice.
+function CostCell({ usage }: { usage: RuntimeUsage[] }) {
   const { t } = useT("runtimes");
-  const { data: usage = [] } = useQuery(
-    runtimeUsageOptions(runtimeId, COST_CELL_DAYS),
-  );
   const cost7d = useMemo(() => computeCostInWindow(usage, 7), [usage]);
   const costPrev7d = useMemo(
     () => computeCostInWindow(usage, 7, 7),

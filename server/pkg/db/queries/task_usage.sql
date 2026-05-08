@@ -1,8 +1,9 @@
 -- name: UpsertTaskUsage :exec
-INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO task_usage (task_id, runtime_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (task_id, provider, model)
 DO UPDATE SET
+    runtime_id = EXCLUDED.runtime_id,
     input_tokens = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
@@ -27,9 +28,8 @@ SELECT
     SUM(tu.cache_write_tokens)::bigint AS total_cache_write_tokens,
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-JOIN agent a ON a.id = atq.agent_id
-WHERE a.workspace_id = $1
+JOIN agent_runtime ar ON ar.id = tu.runtime_id
+WHERE ar.workspace_id = $1
   AND tu.created_at >= DATE_TRUNC('day', @since::timestamptz)
 GROUP BY DATE(tu.created_at), tu.model
 ORDER BY DATE(tu.created_at) DESC, tu.model;
@@ -45,9 +45,8 @@ SELECT
     SUM(tu.cache_write_tokens)::bigint AS total_cache_write_tokens,
     COUNT(DISTINCT tu.task_id)::int AS task_count
 FROM task_usage tu
-JOIN agent_task_queue atq ON atq.id = tu.task_id
-JOIN agent a ON a.id = atq.agent_id
-WHERE a.workspace_id = $1
+JOIN agent_runtime ar ON ar.id = tu.runtime_id
+WHERE ar.workspace_id = $1
   AND tu.created_at >= DATE_TRUNC('day', @since::timestamptz)
 GROUP BY tu.model
 ORDER BY (SUM(tu.input_tokens) + SUM(tu.output_tokens)) DESC;

@@ -445,6 +445,28 @@ func (q *Queries) ReassignAgentsToRuntime(ctx context.Context, arg ReassignAgent
 	return result.RowsAffected(), nil
 }
 
+const reassignTaskUsageToRuntime = `-- name: ReassignTaskUsageToRuntime :execrows
+UPDATE task_usage
+SET runtime_id = $1
+WHERE runtime_id = $2
+`
+
+type ReassignTaskUsageToRuntimeParams struct {
+	NewRuntimeID pgtype.UUID `json:"new_runtime_id"`
+	OldRuntimeID pgtype.UUID `json:"old_runtime_id"`
+}
+
+// Keeps denormalized task_usage.runtime_id in sync when legacy runtime rows
+// are merged. This must run before deleting old_runtime_id because task_usage
+// also has a runtime FK for fast usage aggregation.
+func (q *Queries) ReassignTaskUsageToRuntime(ctx context.Context, arg ReassignTaskUsageToRuntimeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reassignTaskUsageToRuntime, arg.NewRuntimeID, arg.OldRuntimeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const reassignTasksToRuntime = `-- name: ReassignTasksToRuntime :execrows
 UPDATE agent_task_queue
 SET runtime_id = $1

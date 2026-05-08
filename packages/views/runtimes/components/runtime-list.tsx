@@ -8,6 +8,7 @@ import type {
   AgentRuntime,
   AgentTask,
   MemberWithUser,
+  RuntimeUsage,
 } from "@multica/core/types";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -16,11 +17,16 @@ import {
   memberListOptions,
 } from "@multica/core/workspace/queries";
 import { latestCliVersionOptions } from "@multica/core/runtimes";
+import { runtimeUsageByWorkspaceOptions } from "@multica/core/runtimes/queries";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { paths, useWorkspaceSlug } from "@multica/core/paths";
 import { DataTable } from "@multica/ui/components/ui/data-table";
 import { useNavigation } from "../../navigation";
-import { type RuntimeRow, createRuntimeColumns } from "./runtime-columns";
+import {
+  RUNTIME_LIST_USAGE_DAYS,
+  type RuntimeRow,
+  createRuntimeColumns,
+} from "./runtime-columns";
 import { useT } from "../../i18n";
 
 interface RuntimeWorkload {
@@ -34,6 +40,16 @@ const EMPTY_WORKLOAD: RuntimeWorkload = {
   runningCount: 0,
   queuedCount: 0,
 };
+
+function groupUsageByRuntime(usage: RuntimeUsage[]): Map<string, RuntimeUsage[]> {
+  const result = new Map<string, RuntimeUsage[]>();
+  for (const row of usage) {
+    const rows = result.get(row.runtime_id);
+    if (rows) rows.push(row);
+    else result.set(row.runtime_id, [row]);
+  }
+  return result;
+}
 
 // Per-runtime workload snapshot — agent IDs serving this runtime (drives
 // the avatar stack; .length doubles as the agent count) plus task counts
@@ -95,6 +111,9 @@ export function RuntimeList({
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: snapshot = [] } = useQuery(agentTaskSnapshotOptions(wsId));
   const { data: latestCliVersion = null } = useQuery(latestCliVersionOptions());
+  const { data: runtimeUsage = [] } = useQuery(
+    runtimeUsageByWorkspaceOptions(wsId, RUNTIME_LIST_USAGE_DAYS),
+  );
 
   const currentMember = user
     ? members.find((m) => m.user_id === user.id)
@@ -106,6 +125,10 @@ export function RuntimeList({
   const workloadIndex = useMemo(
     () => buildWorkloadIndex(agents, snapshot),
     [agents, snapshot],
+  );
+  const usageByRuntime = useMemo(
+    () => groupUsageByRuntime(runtimeUsage),
+    [runtimeUsage],
   );
 
   const memberById = useMemo(() => {
@@ -144,8 +167,9 @@ export function RuntimeList({
         wsId,
         now,
         t,
+        usageByRuntime,
       }),
-    [showOwner, latestCliVersion, wsId, now, t],
+    [showOwner, latestCliVersion, wsId, now, t, usageByRuntime],
   );
 
   const table = useReactTable({

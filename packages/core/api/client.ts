@@ -664,6 +664,16 @@ export class ApiClient {
     return this.fetch(`/api/runtimes/${runtimeId}/usage?${search}`);
   }
 
+  async getRuntimesUsage(params: {
+    workspace_id: string;
+    days?: number;
+  }): Promise<RuntimeUsage[]> {
+    const search = new URLSearchParams();
+    search.set("workspace_id", params.workspace_id);
+    if (params.days) search.set("days", String(params.days));
+    return this.fetch(`/api/runtimes/usage?${search}`);
+  }
+
   async getRuntimeTaskActivity(runtimeId: string): Promise<RuntimeHourlyActivity[]> {
     return this.fetch(`/api/runtimes/${runtimeId}/activity`);
   }

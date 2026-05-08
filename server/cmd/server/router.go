@@ -450,6 +450,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// Runtimes
 			r.Route("/api/runtimes", func(r chi.Router) {
 				r.Get("/", h.ListAgentRuntimes)
+				r.Get("/usage", h.GetWorkspaceRuntimeUsage)
 				r.Route("/{runtimeId}", func(r chi.Router) {
 					r.Get("/usage", h.GetRuntimeUsage)
 					r.Get("/usage/by-agent", h.GetRuntimeUsageByAgent)
