@@ -982,59 +982,96 @@ func TestInjectRuntimeConfigRequiresExplicitCommentPost(t *testing.T) {
 	}
 }
 
-// TestInjectRuntimeConfigDirectsMultiLineWritesToStdin pins the guidance that
-// any multi-line content for `multica issue comment add` must go through
-// `--content-stdin` + a HEREDOC. Agents that reached for the inline
-// `--content "...\n\n..."` form ended up with literal 4-char `\n` sequences
-// in stored comments because bash does not expand backslash escapes inside
-// double quotes; see MUL-1467. This test prevents the multi-line guidance
-// from silently regressing back into a "for special characters" footnote.
+// TestInjectRuntimeConfigAvailableCommandsIsNeutral pins that the global
+// Available Commands section lists the three input modes neutrally for
+// every provider, with no "MUST pipe via stdin" mandate.
 //
-// Pins runtimeGOOS to "linux" so the test is deterministic regardless of
-// the host OS the test runner is on; the Windows branch has a separate
-// file-first contract pinned by TestInjectRuntimeConfigWindowsRecommendsContentFile.
+// Background: #1795 / #1851 introduced "MUST pipe via stdin" /
+// `--description-stdin` directives in the global section to fix Codex's
+// habit of emitting literal `\n` inside `--content "..."` (MUL-1467).
+// That mandate landed in the all-provider section and ended up steering
+// every provider at stdin — which then broke non-ASCII bytes on Windows
+// shells (#2198 / #2236). This rollback keeps the strong Codex-specific
+// mandate in the Codex-Specific section (pinned by
+// TestInjectRuntimeConfigCodexEmphasizesStdinForFormattedComments) and
+// leaves the global section neutral. Pinning the neutrality here so a
+// future refactor can't accidentally re-introduce the over-spread.
+//
 // Not parallel: mutates the package-level runtimeGOOS.
-func TestInjectRuntimeConfigDirectsMultiLineWritesToStdin(t *testing.T) {
+func TestInjectRuntimeConfigAvailableCommandsIsNeutral(t *testing.T) {
 	saved := runtimeGOOS
 	t.Cleanup(func() { runtimeGOOS = saved })
-	runtimeGOOS = "linux"
 
-	dir := t.TempDir()
-	if err := InjectRuntimeConfig(dir, "claude", TaskContextForEnv{IssueID: "issue-1"}); err != nil {
-		t.Fatalf("InjectRuntimeConfig failed: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	s := string(data)
+	for _, host := range []string{"linux", "darwin", "windows"} {
+		for _, provider := range []string{"claude", "opencode", "openclaw", "hermes", "kimi", "kiro", "cursor", "gemini"} {
+			t.Run(provider+"/"+host, func(t *testing.T) {
+				runtimeGOOS = host
+				dir := t.TempDir()
+				if err := InjectRuntimeConfig(dir, provider, TaskContextForEnv{IssueID: "issue-1"}); err != nil {
+					t.Fatalf("InjectRuntimeConfig failed: %v", err)
+				}
 
-	for _, want := range []string{
-		"multi-line content",
-		"MUST pipe via stdin",
-		"--content-stdin",
-		"<<'COMMENT'",
-		"`--description`",
-		"--description-stdin",
-	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("CLAUDE.md missing multi-line guidance %q\n---\n%s", want, s)
+				configFile := "CLAUDE.md"
+				if provider != "claude" {
+					configFile = "AGENTS.md"
+				}
+				if provider == "gemini" {
+					configFile = "GEMINI.md"
+				}
+				data, err := os.ReadFile(filepath.Join(dir, configFile))
+				if err != nil {
+					t.Fatalf("read %s: %v", configFile, err)
+				}
+				s := string(data)
+
+				// Available Commands lists all three input modes as fact.
+				for _, want := range []string{
+					"`--content \"...\"`",
+					"`--content-stdin`",
+					"`--content-file <path>`",
+					"`--description-stdin`",
+					"`--description-file <path>`",
+				} {
+					if !strings.Contains(s, want) {
+						t.Errorf("%s missing flag mention %q\n---\n%s", configFile, want, s)
+					}
+				}
+
+				// "MUST pipe via stdin" must NOT appear in any non-Codex
+				// provider's runtime config: it was the over-spread of
+				// the Codex-specific fix.
+				for _, banned := range []string{
+					"MUST pipe via stdin",
+					"Agent-authored comments should always pipe content via stdin",
+					"use `--description-stdin` and pipe a HEREDOC",
+				} {
+					if strings.Contains(s, banned) {
+						t.Errorf("%s carries over-spread Codex mandate %q for non-Codex provider %s\n---\n%s", configFile, banned, provider, s)
+					}
+				}
+			})
 		}
 	}
 }
 
-// TestInjectRuntimeConfigWindowsRecommendsContentFile pins the Windows-specific
-// rewrite added after issues #2198 / #2236: agent-authored comments arrive
-// as `?` because Windows PowerShell 5.1 and cmd.exe re-encode piped HEREDOC
-// bytes through the active console codepage, dropping non-ASCII bytes
-// before they reach `multica`. The Windows comment/description block is
-// rewritten file-first — there is no preceding "MUST pipe via stdin" /
-// `--description-stdin` directive that could override it.
-func TestInjectRuntimeConfigWindowsRecommendsContentFile(t *testing.T) {
+// TestInjectRuntimeConfigCodexWindowsRecommendsContentFile pins the
+// Windows-specific Codex carve-out: on Windows the Codex-Specific section
+// directs the agent at `--content-file` instead of `--content-stdin`,
+// because Windows PowerShell 5.1 / cmd.exe re-encode piped HEREDOC bytes
+// through the active console codepage and silently drop non-ASCII as `?`
+// before reaching `multica.exe` (#2198 / #2236). On non-Windows hosts the
+// Codex section keeps the canonical stdin/HEREDOC mandate.
+//
+// The Available Commands section is provider-neutral and lists all three
+// input modes regardless of host — its neutrality is pinned separately by
+// TestInjectRuntimeConfigAvailableCommandsIsNeutral.
+//
+// Not parallel: mutates the package-level runtimeGOOS.
+func TestInjectRuntimeConfigCodexWindowsRecommendsContentFile(t *testing.T) {
 	saved := runtimeGOOS
 	t.Cleanup(func() { runtimeGOOS = saved })
 
-	t.Run("windows host emits the file-first block", func(t *testing.T) {
+	t.Run("codex/windows points at --content-file", func(t *testing.T) {
 		runtimeGOOS = "windows"
 		dir := t.TempDir()
 		if err := InjectRuntimeConfig(dir, "codex", TaskContextForEnv{IssueID: "issue-1"}); err != nil {
@@ -1046,39 +1083,31 @@ func TestInjectRuntimeConfigWindowsRecommendsContentFile(t *testing.T) {
 		}
 		s := string(data)
 		for _, want := range []string{
-			"On this Windows host",
+			"On Windows, **always write the comment body to a UTF-8 file",
 			"console codepage",
 			"--content-file",
-			"--description-file",
 			"silently drop non-ASCII characters as `?`",
 		} {
 			if !strings.Contains(s, want) {
-				t.Errorf("AGENTS.md missing Windows file-first guidance %q\n---\n%s", want, s)
+				t.Errorf("AGENTS.md missing Codex/Windows file-first guidance %q\n---\n%s", want, s)
 			}
 		}
 
-		// The Windows block must NOT carry over any prescriptive
-		// "use stdin" / "pipe a HEREDOC" directive: GPT-Boy's review noted
-		// that even a Windows caveat appended after MUST-stdin lines sets
-		// up a conflicting instruction the agent can latch onto. The
-		// Windows branch is now file-first; stdin appears only in
-		// anti-prescriptive prose like "do NOT pipe via `--content-stdin`",
-		// so the assertions below pin the prescriptive phrasings, not the
-		// bare flag names.
+		// On Windows the Codex section must NOT prescribe stdin — that's
+		// the exact path the Windows console codepage mangles. Pin the
+		// prescriptive phrasings (sentence-level), not bare flag names,
+		// so anti-prescriptive prose like "do NOT pipe via
+		// `--content-stdin`" doesn't trip the ban.
 		for _, banned := range []string{
-			"MUST pipe via stdin",
-			"use `--description-stdin` and pipe a HEREDOC",
-			"<<'COMMENT'",
-			"Agent-authored comments should always pipe content via stdin",
-			"always use `--content-stdin`",
+			"always use `--content-stdin` with a HEREDOC, even for short single-line replies",
 		} {
 			if strings.Contains(s, banned) {
-				t.Errorf("AGENTS.md still carries non-Windows stdin directive %q on Windows\n---\n%s", banned, s)
+				t.Errorf("AGENTS.md still carries Codex stdin mandate %q on Windows\n---\n%s", banned, s)
 			}
 		}
 	})
 
-	t.Run("non-windows host keeps the stdin-first block", func(t *testing.T) {
+	t.Run("codex/linux keeps the stdin-first Codex section", func(t *testing.T) {
 		runtimeGOOS = "linux"
 		dir := t.TempDir()
 		if err := InjectRuntimeConfig(dir, "codex", TaskContextForEnv{IssueID: "issue-1"}); err != nil {
@@ -1089,20 +1118,19 @@ func TestInjectRuntimeConfigWindowsRecommendsContentFile(t *testing.T) {
 			t.Fatalf("read AGENTS.md: %v", err)
 		}
 		s := string(data)
-		if strings.Contains(s, "On this Windows host") {
-			t.Errorf("AGENTS.md should not surface Windows guidance when host is %s", runtimeGOOS)
-		}
-		// On Linux the stdin/HEREDOC contract is the canonical multi-line
-		// guidance — pin that it is still present so we can't accidentally
-		// kill it for non-Windows hosts in a future refactor.
+		// On Linux the Codex section keeps the canonical stdin/HEREDOC
+		// mandate — pin it so a future refactor can't accidentally drop
+		// the protection that originally fixed MUL-1467.
 		for _, want := range []string{
-			"MUST pipe via stdin",
-			"--content-stdin",
-			"--description-stdin",
+			"always use `--content-stdin` with a HEREDOC",
+			"Never use inline `--content` for agent-authored comments",
 		} {
 			if !strings.Contains(s, want) {
-				t.Errorf("AGENTS.md missing Linux stdin guidance %q\n---\n%s", want, s)
+				t.Errorf("AGENTS.md missing Codex/Linux stdin mandate %q\n---\n%s", want, s)
 			}
+		}
+		if strings.Contains(s, "On Windows, **always write the comment body to a UTF-8 file") {
+			t.Errorf("AGENTS.md should not surface Windows codex guidance on linux host\n---\n%s", s)
 		}
 	})
 }
