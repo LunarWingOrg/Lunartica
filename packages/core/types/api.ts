@@ -1,4 +1,4 @@
-import type { Issue, IssueStatus, IssuePriority, IssueAssigneeType } from "./issue";
+import type { Issue, IssueStatus, IssuePriority, IssueAssigneeType, IssueCaptainType } from "./issue";
 import type { MemberRole } from "./workspace";
 import type { Project } from "./project";
 
@@ -10,6 +10,8 @@ export interface CreateIssueRequest {
   priority?: IssuePriority;
   assignee_type?: IssueAssigneeType;
   assignee_id?: string;
+  captain_type?: IssueCaptainType;
+  captain_id?: string;
   parent_issue_id?: string;
   project_id?: string;
   due_date?: string;
@@ -23,6 +25,8 @@ export interface UpdateIssueRequest {
   priority?: IssuePriority;
   assignee_type?: IssueAssigneeType | null;
   assignee_id?: string | null;
+  captain_type?: IssueCaptainType | null;
+  captain_id?: string | null;
   position?: number;
   due_date?: string | null;
   parent_issue_id?: string | null;

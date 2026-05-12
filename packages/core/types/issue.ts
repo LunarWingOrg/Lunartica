@@ -13,6 +13,9 @@ export type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
 
 export type IssueAssigneeType = "member" | "agent";
 
+// v1 only supports "agent"; v2 will add "playbook".
+export type IssueCaptainType = "agent";
+
 export interface IssueReaction {
   id: string;
   issue_id: string;
@@ -33,6 +36,8 @@ export interface Issue {
   priority: IssuePriority;
   assignee_type: IssueAssigneeType | null;
   assignee_id: string | null;
+  captain_type: IssueCaptainType | null;
+  captain_id: string | null;
   creator_type: IssueAssigneeType;
   creator_id: string;
   parent_issue_id: string | null;

@@ -25,6 +25,8 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     priority: "medium",
     assignee_type: null,
     assignee_id: null,
+    captain_type: null,
+    captain_id: null,
     creator_type: "member",
     creator_id: "u-1",
     parent_issue_id: null,

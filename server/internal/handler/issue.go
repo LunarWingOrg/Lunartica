@@ -36,6 +36,8 @@ type IssueResponse struct {
 	Priority           string                  `json:"priority"`
 	AssigneeType       *string                 `json:"assignee_type"`
 	AssigneeID         *string                 `json:"assignee_id"`
+	CaptainType        *string                 `json:"captain_type"`
+	CaptainID          *string                 `json:"captain_id"`
 	CreatorType        string                  `json:"creator_type"`
 	CreatorID          string                  `json:"creator_id"`
 	ParentIssueID      *string                 `json:"parent_issue_id"`
@@ -68,6 +70,8 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		Priority:      i.Priority,
 		AssigneeType:  textToPtr(i.AssigneeType),
 		AssigneeID:    uuidToPtr(i.AssigneeID),
+		CaptainType:   textToPtr(i.CaptainType),
+		CaptainID:     uuidToPtr(i.CaptainID),
 		CreatorType:   i.CreatorType,
 		CreatorID:     uuidToString(i.CreatorID),
 		ParentIssueID: uuidToPtr(i.ParentIssueID),
@@ -93,6 +97,8 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		Priority:      i.Priority,
 		AssigneeType:  textToPtr(i.AssigneeType),
 		AssigneeID:    uuidToPtr(i.AssigneeID),
+		CaptainType:   textToPtr(i.CaptainType),
+		CaptainID:     uuidToPtr(i.CaptainID),
 		CreatorType:   i.CreatorType,
 		CreatorID:     uuidToString(i.CreatorID),
 		ParentIssueID: uuidToPtr(i.ParentIssueID),
@@ -148,6 +154,8 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		Priority:      i.Priority,
 		AssigneeType:  textToPtr(i.AssigneeType),
 		AssigneeID:    uuidToPtr(i.AssigneeID),
+		CaptainType:   textToPtr(i.CaptainType),
+		CaptainID:     uuidToPtr(i.CaptainID),
 		CreatorType:   i.CreatorType,
 		CreatorID:     uuidToString(i.CreatorID),
 		ParentIssueID: uuidToPtr(i.ParentIssueID),
@@ -466,6 +474,7 @@ func buildSearchQuery(phrase string, terms []string, queryNum int, hasNum bool, 
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position,
 		i.due_date, i.created_at, i.updated_at, i.number, i.project_id,
+		i.captain_type, i.captain_id,
 		COUNT(*) OVER() AS total_count,
 		%s AS match_source,
 		%s AS matched_comment_content
@@ -558,6 +567,8 @@ func (h *Handler) SearchIssues(w http.ResponseWriter, r *http.Request) {
 			&sr.issue.UpdatedAt,
 			&sr.issue.Number,
 			&sr.issue.ProjectID,
+			&sr.issue.CaptainType,
+			&sr.issue.CaptainID,
 			&sr.totalCount,
 			&sr.matchSource,
 			&sr.matchedCommentContent,

@@ -273,6 +273,8 @@ const issueDefaults = {
   parent_issue_id: null,
   project_id: null,
   position: 0,
+  captain_type: null,
+  captain_id: null,
 };
 
 const mockIssues: Issue[] = [
