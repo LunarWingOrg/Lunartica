@@ -116,6 +116,49 @@ WHERE a.workspace_id = $1
 GROUP BY atq.agent_id, tu.model
 ORDER BY atq.agent_id, tu.model;
 
+-- name: ListDashboardUsageDailyRollup :many
+-- Daily token rollup, served from `task_usage_dashboard_daily` (migration
+-- 084). Same wire shape as ListDashboardUsageDaily so the handler can
+-- swap them on the `UseDailyRollupForDashboard` flag with no other
+-- changes. The rollup is up to ~10 min stale (5 min cron + 5 min lag),
+-- which is fine for a dashboard read path.
+SELECT
+    bucket_date AS date,
+    model,
+    SUM(input_tokens)::bigint        AS input_tokens,
+    SUM(output_tokens)::bigint       AS output_tokens,
+    SUM(cache_read_tokens)::bigint   AS cache_read_tokens,
+    SUM(cache_write_tokens)::bigint  AS cache_write_tokens,
+    SUM(task_count)::int             AS task_count
+FROM task_usage_dashboard_daily
+WHERE workspace_id = $1
+  AND bucket_date >= DATE_TRUNC('day', @since::timestamptz)::date
+  AND (sqlc.narg('project_id')::uuid IS NULL OR project_id = sqlc.narg('project_id'))
+GROUP BY bucket_date, model
+ORDER BY bucket_date DESC, model;
+
+-- name: ListDashboardUsageByAgentRollup :many
+-- Per-(agent, model) token rollup from `task_usage_dashboard_daily`.
+-- task_count here is the SUM of per-bucket distinct counts; one task that
+-- spans multiple days lands in multiple buckets, so this can over-count
+-- by date. The frontend prefers `ListDashboardAgentRunTime`'s per-agent
+-- distinct figure for the user-facing "tasks" column, so this value is
+-- informational only.
+SELECT
+    agent_id,
+    model,
+    SUM(input_tokens)::bigint        AS input_tokens,
+    SUM(output_tokens)::bigint       AS output_tokens,
+    SUM(cache_read_tokens)::bigint   AS cache_read_tokens,
+    SUM(cache_write_tokens)::bigint  AS cache_write_tokens,
+    SUM(task_count)::int             AS task_count
+FROM task_usage_dashboard_daily
+WHERE workspace_id = $1
+  AND bucket_date >= DATE_TRUNC('day', @since::timestamptz)::date
+  AND (sqlc.narg('project_id')::uuid IS NULL OR project_id = sqlc.narg('project_id'))
+GROUP BY agent_id, model
+ORDER BY agent_id, model;
+
 -- name: ListDashboardAgentRunTime :many
 -- Per-agent total task run time and task count for the workspace, optionally
 -- scoped to a single project. Counts only terminal runs (completed or failed)

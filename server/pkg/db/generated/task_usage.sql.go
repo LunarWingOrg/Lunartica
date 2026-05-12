@@ -339,6 +339,73 @@ func (q *Queries) ListDashboardUsageByAgent(ctx context.Context, arg ListDashboa
 	return items, nil
 }
 
+const listDashboardUsageByAgentRollup = `-- name: ListDashboardUsageByAgentRollup :many
+SELECT
+    agent_id,
+    model,
+    SUM(input_tokens)::bigint        AS input_tokens,
+    SUM(output_tokens)::bigint       AS output_tokens,
+    SUM(cache_read_tokens)::bigint   AS cache_read_tokens,
+    SUM(cache_write_tokens)::bigint  AS cache_write_tokens,
+    SUM(task_count)::int             AS task_count
+FROM task_usage_dashboard_daily
+WHERE workspace_id = $1
+  AND bucket_date >= DATE_TRUNC('day', $2::timestamptz)::date
+  AND ($3::uuid IS NULL OR project_id = $3)
+GROUP BY agent_id, model
+ORDER BY agent_id, model
+`
+
+type ListDashboardUsageByAgentRollupParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+	ProjectID   pgtype.UUID        `json:"project_id"`
+}
+
+type ListDashboardUsageByAgentRollupRow struct {
+	AgentID          pgtype.UUID `json:"agent_id"`
+	Model            string      `json:"model"`
+	InputTokens      int64       `json:"input_tokens"`
+	OutputTokens     int64       `json:"output_tokens"`
+	CacheReadTokens  int64       `json:"cache_read_tokens"`
+	CacheWriteTokens int64       `json:"cache_write_tokens"`
+	TaskCount        int32       `json:"task_count"`
+}
+
+// Per-(agent, model) token rollup from `task_usage_dashboard_daily`.
+// task_count here is the SUM of per-bucket distinct counts; one task that
+// spans multiple days lands in multiple buckets, so this can over-count
+// by date. The frontend prefers `ListDashboardAgentRunTime`'s per-agent
+// distinct figure for the user-facing "tasks" column, so this value is
+// informational only.
+func (q *Queries) ListDashboardUsageByAgentRollup(ctx context.Context, arg ListDashboardUsageByAgentRollupParams) ([]ListDashboardUsageByAgentRollupRow, error) {
+	rows, err := q.db.Query(ctx, listDashboardUsageByAgentRollup, arg.WorkspaceID, arg.Since, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDashboardUsageByAgentRollupRow{}
+	for rows.Next() {
+		var i ListDashboardUsageByAgentRollupRow
+		if err := rows.Scan(
+			&i.AgentID,
+			&i.Model,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+			&i.TaskCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDashboardUsageDaily = `-- name: ListDashboardUsageDaily :many
 SELECT
     DATE(tu.created_at) AS date,
@@ -390,6 +457,72 @@ func (q *Queries) ListDashboardUsageDaily(ctx context.Context, arg ListDashboard
 	items := []ListDashboardUsageDailyRow{}
 	for rows.Next() {
 		var i ListDashboardUsageDailyRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.Model,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+			&i.TaskCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDashboardUsageDailyRollup = `-- name: ListDashboardUsageDailyRollup :many
+SELECT
+    bucket_date AS date,
+    model,
+    SUM(input_tokens)::bigint        AS input_tokens,
+    SUM(output_tokens)::bigint       AS output_tokens,
+    SUM(cache_read_tokens)::bigint   AS cache_read_tokens,
+    SUM(cache_write_tokens)::bigint  AS cache_write_tokens,
+    SUM(task_count)::int             AS task_count
+FROM task_usage_dashboard_daily
+WHERE workspace_id = $1
+  AND bucket_date >= DATE_TRUNC('day', $2::timestamptz)::date
+  AND ($3::uuid IS NULL OR project_id = $3)
+GROUP BY bucket_date, model
+ORDER BY bucket_date DESC, model
+`
+
+type ListDashboardUsageDailyRollupParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+	ProjectID   pgtype.UUID        `json:"project_id"`
+}
+
+type ListDashboardUsageDailyRollupRow struct {
+	Date             pgtype.Date `json:"date"`
+	Model            string      `json:"model"`
+	InputTokens      int64       `json:"input_tokens"`
+	OutputTokens     int64       `json:"output_tokens"`
+	CacheReadTokens  int64       `json:"cache_read_tokens"`
+	CacheWriteTokens int64       `json:"cache_write_tokens"`
+	TaskCount        int32       `json:"task_count"`
+}
+
+// Daily token rollup, served from `task_usage_dashboard_daily` (migration
+// 084). Same wire shape as ListDashboardUsageDaily so the handler can
+// swap them on the `UseDailyRollupForDashboard` flag with no other
+// changes. The rollup is up to ~10 min stale (5 min cron + 5 min lag),
+// which is fine for a dashboard read path.
+func (q *Queries) ListDashboardUsageDailyRollup(ctx context.Context, arg ListDashboardUsageDailyRollupParams) ([]ListDashboardUsageDailyRollupRow, error) {
+	rows, err := q.db.Query(ctx, listDashboardUsageDailyRollup, arg.WorkspaceID, arg.Since, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDashboardUsageDailyRollupRow{}
+	for rows.Next() {
+		var i ListDashboardUsageDailyRollupRow
 		if err := rows.Scan(
 			&i.Date,
 			&i.Model,

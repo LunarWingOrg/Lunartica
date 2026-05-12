@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -63,7 +64,10 @@ type DashboardUsageDailyResponse struct {
 }
 
 // GetDashboardUsageDaily returns per-(date, model) token rows for the
-// workspace, optionally scoped to a project.
+// workspace, optionally scoped to a project. When the dashboard rollup
+// is enabled (USAGE_DASHBOARD_ROLLUP_ENABLED=true) reads come from
+// `task_usage_dashboard_daily` (migration 084); otherwise from the raw
+// task_usage stream.
 func (h *Handler) GetDashboardUsageDaily(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	if _, ok := h.workspaceMember(w, r, workspaceID); !ok {
@@ -75,16 +79,51 @@ func (h *Handler) GetDashboardUsageDaily(w http.ResponseWriter, r *http.Request)
 	}
 	since := parseSinceParam(r, 30)
 
-	rows, err := h.Queries.ListDashboardUsageDaily(r.Context(), db.ListDashboardUsageDailyParams{
-		WorkspaceID: parseUUID(workspaceID),
-		Since:       since,
-		ProjectID:   projectID,
-	})
+	resp, err := h.listDashboardUsageDaily(r.Context(), parseUUID(workspaceID), since, projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list usage")
 		return
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
 
+func (h *Handler) listDashboardUsageDaily(
+	ctx context.Context,
+	workspaceID pgtype.UUID,
+	since pgtype.Timestamptz,
+	projectID pgtype.UUID,
+) ([]DashboardUsageDailyResponse, error) {
+	if h.cfg.UseDailyRollupForDashboard {
+		rows, err := h.Queries.ListDashboardUsageDailyRollup(ctx, db.ListDashboardUsageDailyRollupParams{
+			WorkspaceID: workspaceID,
+			Since:       since,
+			ProjectID:   projectID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp := make([]DashboardUsageDailyResponse, len(rows))
+		for i, row := range rows {
+			resp[i] = DashboardUsageDailyResponse{
+				Date:             row.Date.Time.Format("2006-01-02"),
+				Model:            row.Model,
+				InputTokens:      row.InputTokens,
+				OutputTokens:     row.OutputTokens,
+				CacheReadTokens:  row.CacheReadTokens,
+				CacheWriteTokens: row.CacheWriteTokens,
+				TaskCount:        row.TaskCount,
+			}
+		}
+		return resp, nil
+	}
+	rows, err := h.Queries.ListDashboardUsageDaily(ctx, db.ListDashboardUsageDailyParams{
+		WorkspaceID: workspaceID,
+		Since:       since,
+		ProjectID:   projectID,
+	})
+	if err != nil {
+		return nil, err
+	}
 	resp := make([]DashboardUsageDailyResponse, len(rows))
 	for i, row := range rows {
 		resp[i] = DashboardUsageDailyResponse{
@@ -97,7 +136,7 @@ func (h *Handler) GetDashboardUsageDaily(w http.ResponseWriter, r *http.Request)
 			TaskCount:        row.TaskCount,
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 // DashboardUsageByAgentResponse is one (agent, model) row.
@@ -112,7 +151,9 @@ type DashboardUsageByAgentResponse struct {
 }
 
 // GetDashboardUsageByAgent returns per-(agent, model) token aggregates for
-// the workspace, optionally scoped to a project.
+// the workspace, optionally scoped to a project. Switches to the rollup
+// table when UseDailyRollupForDashboard is on (same gating as the daily
+// endpoint above).
 func (h *Handler) GetDashboardUsageByAgent(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	if _, ok := h.workspaceMember(w, r, workspaceID); !ok {
@@ -124,16 +165,51 @@ func (h *Handler) GetDashboardUsageByAgent(w http.ResponseWriter, r *http.Reques
 	}
 	since := parseSinceParam(r, 30)
 
-	rows, err := h.Queries.ListDashboardUsageByAgent(r.Context(), db.ListDashboardUsageByAgentParams{
-		WorkspaceID: parseUUID(workspaceID),
-		Since:       since,
-		ProjectID:   projectID,
-	})
+	resp, err := h.listDashboardUsageByAgent(r.Context(), parseUUID(workspaceID), since, projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list usage by agent")
 		return
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
 
+func (h *Handler) listDashboardUsageByAgent(
+	ctx context.Context,
+	workspaceID pgtype.UUID,
+	since pgtype.Timestamptz,
+	projectID pgtype.UUID,
+) ([]DashboardUsageByAgentResponse, error) {
+	if h.cfg.UseDailyRollupForDashboard {
+		rows, err := h.Queries.ListDashboardUsageByAgentRollup(ctx, db.ListDashboardUsageByAgentRollupParams{
+			WorkspaceID: workspaceID,
+			Since:       since,
+			ProjectID:   projectID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp := make([]DashboardUsageByAgentResponse, len(rows))
+		for i, row := range rows {
+			resp[i] = DashboardUsageByAgentResponse{
+				AgentID:          uuidToString(row.AgentID),
+				Model:            row.Model,
+				InputTokens:      row.InputTokens,
+				OutputTokens:     row.OutputTokens,
+				CacheReadTokens:  row.CacheReadTokens,
+				CacheWriteTokens: row.CacheWriteTokens,
+				TaskCount:        row.TaskCount,
+			}
+		}
+		return resp, nil
+	}
+	rows, err := h.Queries.ListDashboardUsageByAgent(ctx, db.ListDashboardUsageByAgentParams{
+		WorkspaceID: workspaceID,
+		Since:       since,
+		ProjectID:   projectID,
+	})
+	if err != nil {
+		return nil, err
+	}
 	resp := make([]DashboardUsageByAgentResponse, len(rows))
 	for i, row := range rows {
 		resp[i] = DashboardUsageByAgentResponse{
@@ -146,7 +222,7 @@ func (h *Handler) GetDashboardUsageByAgent(w http.ResponseWriter, r *http.Reques
 			TaskCount:        row.TaskCount,
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 // DashboardAgentRunTimeResponse is one agent's total terminal-task run time
