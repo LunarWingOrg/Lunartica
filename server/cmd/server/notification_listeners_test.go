@@ -439,8 +439,8 @@ func TestNotification_AssigneeChanged(t *testing.T) {
 				AssigneeType: &newAssigneeType,
 				AssigneeID:   &newAssigneeID,
 			},
-			"assignee_changed":  true,
-			"status_changed":    false,
+			"assignee_changed":   true,
+			"status_changed":     false,
 			"prev_assignee_type": &oldAssigneeType,
 			"prev_assignee_id":   &oldAssigneeID,
 		},
@@ -1124,60 +1124,60 @@ func TestNotification_StatusChange_ReopenSurfacesNewTaskFailed(t *testing.T) {
 // actor and the captain itself) receive a "captain_changed" inbox item when
 // an issue's captain is set.
 func TestNotification_CaptainChanged(t *testing.T) {
-queries := db.New(testPool)
-bus := newNotificationBus(t, queries)
+	queries := db.New(testPool)
+	bus := newNotificationBus(t, queries)
 
-subEmail := "notif-sub-captain@multica.ai"
-subID := createTestUser(t, subEmail)
-t.Cleanup(func() { cleanupTestUser(t, subEmail) })
+	subEmail := "notif-sub-captain@multica.ai"
+	subID := createTestUser(t, subEmail)
+	t.Cleanup(func() { cleanupTestUser(t, subEmail) })
 
-issueID := createTestIssue(t, testWorkspaceID, testUserID)
-t.Cleanup(func() {
-cleanupInboxForIssue(t, issueID)
-cleanupTestIssue(t, issueID)
-})
+	issueID := createTestIssue(t, testWorkspaceID, testUserID)
+	t.Cleanup(func() {
+		cleanupInboxForIssue(t, issueID)
+		cleanupTestIssue(t, issueID)
+	})
 
-addTestSubscriber(t, issueID, "member", testUserID, "creator")
-addTestSubscriber(t, issueID, "member", subID, "commenter")
+	addTestSubscriber(t, issueID, "member", testUserID, "creator")
+	addTestSubscriber(t, issueID, "member", subID, "commenter")
 
-captainType := "agent"
-captainID := "00000000-0000-0000-0000-cccccccccccc"
-bus.Publish(events.Event{
-Type:        protocol.EventIssueUpdated,
-WorkspaceID: testWorkspaceID,
-ActorType:   "member",
-ActorID:     testUserID, // actor is the creator
-Payload: map[string]any{
-"issue": handler.IssueResponse{
-ID:          issueID,
-WorkspaceID: testWorkspaceID,
-Title:       "captain notif test",
-Status:      "todo",
-Priority:    "medium",
-CreatorType: "member",
-CreatorID:   testUserID,
-CaptainType: &captainType,
-CaptainID:   &captainID,
-},
-"captain_changed":   true,
-"prev_captain_type": (*string)(nil),
-"prev_captain_id":   (*string)(nil),
-},
-})
+	captainType := "agent"
+	captainID := "00000000-0000-0000-0000-cccccccccccc"
+	bus.Publish(events.Event{
+		Type:        protocol.EventIssueUpdated,
+		WorkspaceID: testWorkspaceID,
+		ActorType:   "member",
+		ActorID:     testUserID, // actor is the creator
+		Payload: map[string]any{
+			"issue": handler.IssueResponse{
+				ID:          issueID,
+				WorkspaceID: testWorkspaceID,
+				Title:       "captain notif test",
+				Status:      "todo",
+				Priority:    "medium",
+				CreatorType: "member",
+				CreatorID:   testUserID,
+				CaptainType: &captainType,
+				CaptainID:   &captainID,
+			},
+			"captain_changed":   true,
+			"prev_captain_type": (*string)(nil),
+			"prev_captain_id":   (*string)(nil),
+		},
+	})
 
-// Actor should NOT be notified.
-if got := inboxItemsForRecipient(t, queries, testUserID); len(got) != 0 {
-t.Fatalf("expected 0 inbox items for actor, got %d", len(got))
-}
-// Subscriber should get the captain_changed item.
-subItems := inboxItemsForRecipient(t, queries, subID)
-if len(subItems) != 1 {
-t.Fatalf("expected 1 inbox item for subscriber, got %d", len(subItems))
-}
-if subItems[0].Type != "captain_changed" {
-t.Fatalf("expected type 'captain_changed', got %q", subItems[0].Type)
-}
-if subItems[0].Severity != "info" {
-t.Fatalf("expected severity 'info', got %q", subItems[0].Severity)
-}
+	// Actor should NOT be notified.
+	if got := inboxItemsForRecipient(t, queries, testUserID); len(got) != 0 {
+		t.Fatalf("expected 0 inbox items for actor, got %d", len(got))
+	}
+	// Subscriber should get the captain_changed item.
+	subItems := inboxItemsForRecipient(t, queries, subID)
+	if len(subItems) != 1 {
+		t.Fatalf("expected 1 inbox item for subscriber, got %d", len(subItems))
+	}
+	if subItems[0].Type != "captain_changed" {
+		t.Fatalf("expected type 'captain_changed', got %q", subItems[0].Type)
+	}
+	if subItems[0].Severity != "info" {
+		t.Fatalf("expected severity 'info', got %q", subItems[0].Severity)
+	}
 }
