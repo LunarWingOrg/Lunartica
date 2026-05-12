@@ -455,6 +455,45 @@ func (s *TaskService) EnqueueTaskForMention(ctx context.Context, issue db.Issue,
 	return task, nil
 }
 
+// EnqueueTaskForCaptain creates a queued task for the issue's captain agent
+// in response to a new comment. Mirrors EnqueueTaskForMention — the captain
+// agent ID is provided explicitly rather than derived from the assignee. The
+// captain prompt prelude in runtime_config.go is selected by the claim
+// handler when issue.CaptainID matches the task's AgentID.
+func (s *TaskService) EnqueueTaskForCaptain(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
+	agent, err := s.Queries.GetAgent(ctx, agentID)
+	if err != nil {
+		slog.Error("captain task enqueue failed: agent not found", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID), "error", err)
+		return db.AgentTaskQueue{}, fmt.Errorf("load agent: %w", err)
+	}
+	if agent.ArchivedAt.Valid {
+		slog.Debug("captain task enqueue skipped: agent is archived", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID))
+		return db.AgentTaskQueue{}, fmt.Errorf("agent is archived")
+	}
+	if !agent.RuntimeID.Valid {
+		slog.Error("captain task enqueue failed: agent has no runtime", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID))
+		return db.AgentTaskQueue{}, fmt.Errorf("agent has no runtime")
+	}
+
+	task, err := s.Queries.CreateAgentTask(ctx, db.CreateAgentTaskParams{
+		AgentID:          agentID,
+		RuntimeID:        agent.RuntimeID,
+		IssueID:          issue.ID,
+		Priority:         priorityToInt(issue.Priority),
+		TriggerCommentID: triggerCommentID,
+		TriggerSummary:   s.buildCommentTriggerSummary(ctx, triggerCommentID),
+	})
+	if err != nil {
+		slog.Error("captain task enqueue failed", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID), "error", err)
+		return db.AgentTaskQueue{}, fmt.Errorf("create task: %w", err)
+	}
+
+	slog.Info("captain task enqueued", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID))
+	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, task)
+	s.NotifyTaskEnqueued(ctx, task)
+	return task, nil
+}
+
 // QuickCreateContext is the JSON payload stored on a quick-create task's
 // context column. The daemon detects this variant via Type == "quick_create"
 // and switches to the quick-create prompt template; the completion path

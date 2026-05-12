@@ -260,7 +260,35 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// the user is talking to someone else, not requesting work from the assignee.
 	// Also skip when replying in a member-started thread without mentioning the
 	// assignee — the user is continuing a member-to-member conversation.
-	if authorType == "member" && h.shouldEnqueueOnComment(r.Context(), issue) &&
+	// If the issue has a captain agent set, route ALL comment-trigger
+	// decisions through the captain — bypass the assignee heuristics. The
+	// captain is responsible for deciding whether/how to act on the comment
+	// (it has its own routing instructions). Loop defense: skip when the
+	// commenting agent IS the captain itself, and skip when a pending task
+	// already exists for (issue, captain).
+	if issue.CaptainType.Valid && issue.CaptainID.Valid {
+		captainID := uuidToString(issue.CaptainID)
+		isCaptainAuthor := authorType == "agent" && authorID == captainID
+		if !isCaptainAuthor {
+			pending, _ := h.Queries.HasPendingTaskForIssueAndAgent(r.Context(), db.HasPendingTaskForIssueAndAgentParams{
+				IssueID: issue.ID,
+				AgentID: issue.CaptainID,
+			})
+			if !pending {
+				if agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
+					ID:          issue.CaptainID,
+					WorkspaceID: issue.WorkspaceID,
+				}); err == nil && !agent.ArchivedAt.Valid {
+					actorType, actorID := h.resolveActor(r, requestUserID(r), uuidToString(issue.WorkspaceID))
+					if h.canAccessPrivateAgent(r.Context(), agent, actorType, actorID, uuidToString(issue.WorkspaceID)) {
+						if _, err := h.TaskService.EnqueueTaskForCaptain(r.Context(), issue, issue.CaptainID, comment.ID); err != nil {
+							slog.Warn("enqueue captain task on comment failed", "issue_id", issueID, "error", err)
+						}
+					}
+				}
+			}
+		}
+	} else if authorType == "member" && h.shouldEnqueueOnComment(r.Context(), issue) &&
 		!h.commentMentionsOthersButNotAssignee(comment.Content, issue) &&
 		!h.isReplyToMemberThread(r.Context(), parentComment, comment.Content, issue) {
 		// Always use the current comment as the trigger so the agent reads
