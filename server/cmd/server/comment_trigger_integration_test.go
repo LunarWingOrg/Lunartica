@@ -746,3 +746,100 @@ func TestCommentTrigger_CaptainPendingDedup(t *testing.T) {
 		t.Errorf("expected 1 pending task (dedup), got %d", n)
 	}
 }
+
+// TestCaptainAssign_UpdateEnqueuesTask verifies that setting an issue's
+// captain via PUT /api/issues/{id} enqueues a task for the captain even
+// without a triggering comment. The captain's job is to route the issue,
+// so it should run as soon as it's appointed.
+//
+// Regression target: user feedback on PR #2463 — "setting captain should
+// trigger captain, but my test shows it doesn't."
+func TestCaptainAssign_UpdateEnqueuesTask(t *testing.T) {
+	captainID := getAgentID(t)
+	issueID := createIssue(t, "Captain assign on update enqueues task")
+	t.Cleanup(func() {
+		clearTasks(t, issueID)
+		resp := authRequest(t, "DELETE", "/api/issues/"+issueID, nil)
+		resp.Body.Close()
+	})
+
+	resp := authRequest(t, "PUT", "/api/issues/"+issueID, map[string]any{
+		"captain_type": "agent",
+		"captain_id":   captainID,
+	})
+	resp.Body.Close()
+
+	var captainTasks int
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM agent_task_queue WHERE issue_id = $1 AND agent_id = $2 AND status IN ('queued','dispatched')`,
+		issueID, captainID).Scan(&captainTasks); err != nil {
+		t.Fatalf("count captain tasks: %v", err)
+	}
+	if captainTasks != 1 {
+		t.Errorf("expected 1 task for captain after assign, got %d", captainTasks)
+	}
+}
+
+// TestCaptainAssign_CreateEnqueuesTask verifies that creating an issue with
+// a captain set in the same request enqueues a task for the captain.
+func TestCaptainAssign_CreateEnqueuesTask(t *testing.T) {
+	captainID := getAgentID(t)
+
+	resp := authRequest(t, "POST", "/api/issues?workspace_id="+testWorkspaceID, map[string]any{
+		"title":        "Captain on create enqueues task",
+		"status":       "todo",
+		"priority":     "medium",
+		"captain_type": "agent",
+		"captain_id":   captainID,
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != 201 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create issue: expected 201, got %d: %s", resp.StatusCode, b)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	t.Cleanup(func() {
+		clearTasks(t, created.ID)
+		resp := authRequest(t, "DELETE", "/api/issues/"+created.ID, nil)
+		resp.Body.Close()
+	})
+
+	var captainTasks int
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT count(*) FROM agent_task_queue WHERE issue_id = $1 AND agent_id = $2 AND status IN ('queued','dispatched')`,
+		created.ID, captainID).Scan(&captainTasks); err != nil {
+		t.Fatalf("count captain tasks: %v", err)
+	}
+	if captainTasks != 1 {
+		t.Errorf("expected 1 task for captain on create, got %d", captainTasks)
+	}
+}
+
+// TestCaptainAssign_SelfSetDoesNotEnqueue verifies that when an agent sets
+// itself as captain (e.g. via X-Agent-ID), no task is enqueued. This mirrors
+// the comment-self-loop guard in tryEnqueueCaptainOnComment.
+func TestCaptainAssign_SelfSetDoesNotEnqueue(t *testing.T) {
+	captainID := getAgentID(t)
+	issueID := createIssue(t, "Captain self-assign no enqueue")
+	t.Cleanup(func() {
+		clearTasks(t, issueID)
+		resp := authRequest(t, "DELETE", "/api/issues/"+issueID, nil)
+		resp.Body.Close()
+	})
+
+	// Agent sets itself as captain via X-Agent-ID header.
+	resp := authRequestWithAgent(t, "PUT", "/api/issues/"+issueID, map[string]any{
+		"captain_type": "agent",
+		"captain_id":   captainID,
+	}, captainID)
+	resp.Body.Close()
+
+	if n := countPendingTasks(t, issueID); n != 0 {
+		t.Errorf("expected 0 pending tasks (captain self-assign must not loop), got %d", n)
+	}
+}

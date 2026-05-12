@@ -291,6 +291,19 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		b.WriteString("7. Do NOT change the issue status unless the comment explicitly asks for it\n\n")
 	} else {
 		// Assignment-triggered: defer to agent Skills for workflow specifics.
+		if ctx.IsCaptainTrigger {
+			// Captain prelude for the assignment path: the captain field
+			// was just set/changed (no triggering comment). The captain
+			// should orient itself to the issue and route it per its own
+			// Agent Instructions — typically by deciding whether to handle
+			// the issue itself, delegate to another agent via @mention,
+			// or stay silent.
+			b.WriteString("**You are the CAPTAIN of this issue.** The issue's captain field was just set to point at you, which is why you were triggered. Your job is to ROUTE the issue per your own Agent Instructions — typically by deciding whether to handle it yourself, delegate to another agent via `@mention`, or stay silent.\n\n")
+			b.WriteString("Captain rules (apply on top of the workflow below):\n")
+			b.WriteString("- The captain field replaces the assignee-based comment trigger; the assignee will NOT also be triggered just because the captain changed.\n")
+			b.WriteString("- Only @mention another agent if you are delegating concrete work to them; do not mention them just to acknowledge or sign off.\n")
+			b.WriteString("- If you decide the issue needs no immediate action, exit silently — do not post a 'no action needed' comment.\n\n")
+		}
 		b.WriteString("You are responsible for managing the issue status throughout your work.\n\n")
 		fmt.Fprintf(&b, "1. Run `multica issue get %s --output json` to understand your task\n", ctx.IssueID)
 		fmt.Fprintf(&b, "2. Run `multica issue comment list %s --output json` to read the full comment history (returns all comments, capped server-side at 2000) — this is mandatory, not optional. Earlier comments often carry context the issue body lacks (e.g. which repo to work in, the prior agent's findings, the reason the issue was reassigned to you). Skipping this step is the most common cause of agents acting on stale or incomplete instructions.\n", ctx.IssueID)

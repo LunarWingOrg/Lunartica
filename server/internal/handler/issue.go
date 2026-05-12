@@ -1383,6 +1383,12 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Trigger the captain when an issue is created with one set.
+	// Dedup inside tryEnqueueCaptainOnAssign skips when the captain is
+	// the same agent that was just enqueued as the assignee.
+	actorType, actorID := h.resolveActor(r, requestUserID(r), workspaceID)
+	h.tryEnqueueCaptainOnAssign(r.Context(), issue, actorType, actorID)
+
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -1633,6 +1639,14 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Trigger the captain when it's set (or replaced) — analogous to
+	// triggering an agent assignee on assignment. The captain's job is to
+	// route the issue, so it should run as soon as it's appointed, not
+	// only on the next comment.
+	if captainChanged {
+		h.tryEnqueueCaptainOnAssign(r.Context(), issue, actorType, actorID)
+	}
+
 	// Trigger the assigned agent when a member moves an issue out of backlog.
 	// Backlog acts as a parking lot — moving to an active status signals the
 	// issue is ready for work.
@@ -1687,6 +1701,45 @@ func (h *Handler) validateCaptainPair(ctx context.Context, r *http.Request, work
 		return http.StatusForbidden, "cannot set private agent as captain"
 	}
 	return 0, ""
+}
+
+// tryEnqueueCaptainOnAssign enqueues a captain task when an issue gets a
+// captain set (on create or update). Mirrors tryEnqueueCaptainOnComment but
+// without a triggering comment — the task is dispatched solely because the
+// captain field was just set/changed. Skips when:
+//   - the issue has no captain
+//   - the actor IS the new captain (avoid an agent self-triggering when it
+//     sets itself as captain via the API)
+//   - a queued/dispatched task already exists for (issue, captain) (dedup)
+//   - the captain agent is missing, archived, or has no runtime
+//
+// Logs at warn for transport-level failures only. validateCaptainPair has
+// already run by the time we get here, so access checks aren't repeated.
+func (h *Handler) tryEnqueueCaptainOnAssign(ctx context.Context, issue db.Issue, actorType, actorID string) {
+	if !issue.CaptainType.Valid || !issue.CaptainID.Valid {
+		return
+	}
+	captainID := uuidToString(issue.CaptainID)
+	if actorType == "agent" && actorID == captainID {
+		return
+	}
+	pending, _ := h.Queries.HasPendingTaskForIssueAndAgent(ctx, db.HasPendingTaskForIssueAndAgentParams{
+		IssueID: issue.ID,
+		AgentID: issue.CaptainID,
+	})
+	if pending {
+		return
+	}
+	agent, err := h.Queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{
+		ID:          issue.CaptainID,
+		WorkspaceID: issue.WorkspaceID,
+	})
+	if err != nil || agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
+		return
+	}
+	if _, err := h.TaskService.EnqueueTaskForCaptain(ctx, issue, issue.CaptainID, pgtype.UUID{}); err != nil {
+		slog.Warn("enqueue captain task on assign failed", "issue_id", uuidToString(issue.ID), "error", err)
+	}
 }
 
 // validateAssigneePair verifies the (assignee_type, assignee_id) pair refers
