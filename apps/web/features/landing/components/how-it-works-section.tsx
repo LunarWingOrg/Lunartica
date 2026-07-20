@@ -10,7 +10,7 @@ export function HowItWorksSection() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <section id="how-it-works" className="bg-[#05070b] text-white">
+    <section id="how-it-works" className="bg-[#09090b] text-white">
       <div className="mx-auto max-w-[1320px] px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-40">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
           {t.howItWorks.label}
@@ -25,7 +25,7 @@ export function HowItWorksSection() {
           {t.howItWorks.steps.map((step, i) => (
             <div
               key={i}
-              className="flex flex-col bg-[#05070b] p-8 lg:p-10"
+              className="flex flex-col bg-[#09090b] p-8 lg:p-10"
             >
               <span className="text-[13px] font-semibold tabular-nums text-white/28">
                 {String(i + 1).padStart(2, "0")}

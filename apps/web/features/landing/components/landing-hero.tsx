@@ -20,7 +20,7 @@ export function LandingHero() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <div className="relative min-h-full overflow-hidden bg-[#05070b] text-white">
+    <div className="relative min-h-full overflow-hidden bg-[#09090b] text-white">
       <LandingBackdrop />
 
       <main className="relative z-10">

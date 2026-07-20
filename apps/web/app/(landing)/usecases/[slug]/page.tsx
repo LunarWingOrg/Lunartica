@@ -78,7 +78,7 @@ function MDXCTA({
       className={cn(
         "inline-flex items-center gap-2 rounded-[12px] px-5 py-3 text-[14px] font-semibold not-italic transition-colors",
         variant === "primary"
-          ? "bg-[#0a0d12] text-white hover:bg-[#0a0d12]/88"
+          ? "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
           : "border border-[#0a0d12]/15 text-[#0a0d12] hover:bg-[#0a0d12]/[0.04]",
       )}
     >

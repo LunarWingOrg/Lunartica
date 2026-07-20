@@ -221,7 +221,7 @@ function SuccessCard({
       <div className="mt-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 rounded-[11px] bg-[#0a0d12] px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#0a0d12]/88"
+          className="inline-flex items-center gap-2 rounded-[11px] bg-[#2563eb] px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#1d4ed8]"
         >
           {cta}
         </Link>

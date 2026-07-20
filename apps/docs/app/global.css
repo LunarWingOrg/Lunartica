@@ -37,12 +37,12 @@ html[lang|="ja"] {
 }
 
 /* ---------------------------------------------------------------------------
- * Multica Docs — editorial visual identity (v2)
+ * Multica Docs — matched to the LunarWing v2 gateway palette
  *
- * Docs site is intentionally distinct from the product app: warm-paper
- * background, editorial serif headings (Source Serif 4), indigo accent,
- * ruled dividers. Product app keeps its cool-gray dense Linear-style; docs
- * reads like a literary publication. Same split as Stripe, Cursor, Linear.
+ * Docs shares the product palette: near-black canvas + bright blue accent
+ * in dark, white + #2563eb in light (see packages/ui/styles/tokens.css).
+ * Editorial serif headings and ruled dividers stay; only the colors track
+ * LunarWing so docs and app read as one product.
  *
  * Implementation: docs-scoped token override on top of Multica tokens
  * (whose @theme inline references read --background / --foreground / etc
@@ -55,84 +55,84 @@ html[lang|="ja"] {
 }
 
 /* ---------------------------------------------------------------------------
- * Editorial palette — light
+ * LunarWing palette — light
  * ------------------------------------------------------------------------- */
 
 :root {
-  --background: oklch(0.972 0.003 85);          /* near-white, faint warm — matches landing #f7f7f5 */
-  --foreground: oklch(0.182 0.012 50);          /* warm ink */
-  --muted: oklch(0.955 0.006 85);               /* hairline, slightly warmer than bg */
-  --muted-foreground: oklch(0.482 0.012 65);    /* warm muted */
-  --card: oklch(0.99 0.002 85);                 /* paper — near white */
-  --card-foreground: oklch(0.182 0.012 50);
-  --popover: oklch(0.99 0.002 85);
-  --popover-foreground: oklch(0.182 0.012 50);
-  --primary: oklch(0.55 0.16 255);              /* Multica brand */
-  --primary-foreground: oklch(0.985 0.008 85);
-  --secondary: oklch(0.945 0.012 85);
-  --secondary-foreground: oklch(0.182 0.012 50);
-  --accent: oklch(0.945 0.022 255);             /* brand soft wash */
-  --accent-foreground: oklch(0.46 0.16 255);    /* brand ink */
-  --border: oklch(0.91 0.014 85);               /* ruled lines */
-  --input: oklch(0.91 0.014 85);
-  --ring: oklch(0.55 0.16 255);
-  --sidebar: oklch(0.99 0.002 85);              /* paper — same as card */
-  --sidebar-foreground: oklch(0.182 0.012 50);
-  --sidebar-accent: oklch(0.945 0.006 85);      /* subtle cream, hover/active fill */
-  --sidebar-accent-foreground: oklch(0.182 0.012 50);
-  --sidebar-border: oklch(0.91 0.014 85);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.205 0.040 276);
+  --muted: oklch(0.938 0.001 286);
+  --muted-foreground: oklch(0.442 0 0);
+  --card: oklch(0.971 0.001 286);
+  --card-foreground: oklch(0.205 0.040 276);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.205 0.040 276);
+  --primary: oklch(0.546 0.215 263);            /* LunarWing brand #2563eb */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.938 0.001 286);
+  --secondary-foreground: oklch(0.205 0.040 276);
+  --accent: oklch(0.955 0.020 258);             /* brand soft wash */
+  --accent-foreground: oklch(0.546 0.215 263);
+  --border: oklch(0 0 0 / 10%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.546 0.215 263);
+  --sidebar: oklch(0.971 0.001 286);
+  --sidebar-foreground: oklch(0.205 0.040 276);
+  --sidebar-accent: oklch(0.955 0.020 258);
+  --sidebar-accent-foreground: oklch(0.546 0.215 263);
+  --sidebar-border: oklch(0 0 0 / 10%);
 
   /* Docs-only extras (not bridged to fumadocs slots) */
-  --docs-rule: oklch(0.835 0.018 85);           /* heavier rule */
-  --docs-faint: oklch(0.72 0.018 75);           /* faintest accent */
-  --docs-code-bg: oklch(0.94 0.018 85);         /* warm beige code surface */
-  --docs-code-border: oklch(0.89 0.018 85);
-  --docs-terminal-bg: oklch(0.18 0.012 50);     /* terminal warm dark */
-  --docs-terminal-fg: oklch(0.92 0.012 80);
-  --docs-terminal-accent: oklch(0.65 0.16 255);
+  --docs-rule: oklch(0 0 0 / 16%);              /* heavier rule */
+  --docs-faint: oklch(0.548 0 0);               /* faintest accent */
+  --docs-code-bg: oklch(0.957 0.001 286);       /* LunarWing light code bg #f0f0f2 */
+  --docs-code-border: oklch(0.90 0.002 286);
+  --docs-terminal-bg: oklch(0.141 0.005 286);   /* LunarWing dark bg #09090b */
+  --docs-terminal-fg: oklch(0.985 0 0);
+  --docs-terminal-accent: oklch(0.546 0.215 263);
 }
 
 /* ---------------------------------------------------------------------------
- * Editorial palette — dark (warm dark, NOT Multica's cool dark)
+ * LunarWing palette — dark
  * ------------------------------------------------------------------------- */
 
 .dark {
-  --background: oklch(0.18 0.008 50);
-  --foreground: oklch(0.95 0.012 85);
-  --muted: oklch(0.22 0.008 50);
-  --muted-foreground: oklch(0.65 0.012 75);
-  --card: oklch(0.21 0.008 50);
-  --card-foreground: oklch(0.95 0.012 85);
-  --popover: oklch(0.22 0.008 50);
-  --popover-foreground: oklch(0.95 0.012 85);
-  --primary: oklch(0.7 0.15 255);               /* Multica brand — dark */
-  --primary-foreground: oklch(0.18 0.008 50);
-  --secondary: oklch(0.24 0.008 50);
-  --secondary-foreground: oklch(0.95 0.012 85);
-  --accent: oklch(0.3 0.05 255);                /* brand soft wash — dark */
-  --accent-foreground: oklch(0.78 0.14 255);    /* brand ink — dark */
-  --border: oklch(0.28 0.012 50);
-  --input: oklch(0.28 0.012 50);
-  --ring: oklch(0.7 0.15 255);
-  --sidebar: oklch(0.21 0.008 50);
-  --sidebar-foreground: oklch(0.95 0.012 85);
-  --sidebar-accent: oklch(0.26 0.01 50);        /* warm neutral, hover/active fill — dark */
-  --sidebar-accent-foreground: oklch(0.95 0.012 85);
-  --sidebar-border: oklch(0.28 0.012 50);
+  --background: oklch(0.141 0.005 286);
+  --foreground: oklch(0.985 0 0);
+  --muted: oklch(0.238 0.006 286);
+  --muted-foreground: oklch(0.705 0.015 286);
+  --card: oklch(0.178 0.004 286);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.178 0.004 286);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.712 0.146 254);            /* LunarWing bright accent #60a5fa */
+  --primary-foreground: oklch(0.141 0.005 286);
+  --secondary: oklch(0.238 0.006 286);
+  --secondary-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.278 0.045 258);             /* brand soft wash — dark */
+  --accent-foreground: oklch(0.712 0.146 254);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.712 0.146 254);
+  --sidebar: oklch(0.178 0.004 286);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.278 0.045 258);
+  --sidebar-accent-foreground: oklch(0.712 0.146 254);
+  --sidebar-border: oklch(1 0 0 / 8%);
 
-  --docs-rule: oklch(0.36 0.012 50);
-  --docs-faint: oklch(0.42 0.012 50);
-  --docs-code-bg: oklch(0.165 0.008 50);
-  --docs-code-border: oklch(0.26 0.012 50);
-  --docs-terminal-bg: oklch(0.155 0.012 50);
-  --docs-terminal-fg: oklch(0.92 0.012 80);
-  --docs-terminal-accent: oklch(0.78 0.14 255);
+  --docs-rule: oklch(1 0 0 / 14%);
+  --docs-faint: oklch(0.705 0.015 286);
+  --docs-code-bg: oklch(0.192 0.004 286);       /* LunarWing dark code bg #111113 */
+  --docs-code-border: oklch(1 0 0 / 10%);
+  --docs-terminal-bg: oklch(0.141 0.005 286);
+  --docs-terminal-fg: oklch(0.985 0 0);
+  --docs-terminal-accent: oklch(0.712 0.146 254);
 }
 
 /* ---------------------------------------------------------------------------
  * Fumadocs slot bridge
  *
- * Map fumadocs's --color-fd-* slots to our (now warm) Multica tokens.
+ * Map fumadocs's --color-fd-* slots to our LunarWing-matched tokens.
  * @theme inline keeps the var() reference live so the cascade resolves
  * at runtime — same pattern tokens.css uses.
  * ------------------------------------------------------------------------- */

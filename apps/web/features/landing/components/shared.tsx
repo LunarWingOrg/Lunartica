@@ -174,7 +174,7 @@ export function headerButtonClassName(
         ? "bg-white text-[#0a0d12] hover:bg-white/92"
         : "border border-white/18 bg-black/16 text-white backdrop-blur-sm hover:bg-black/24"
       : tone === "solid"
-        ? "bg-[#0a0d12] text-white hover:bg-[#0a0d12]/88"
+        ? "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
         : "border border-[#0a0d12]/12 bg-white text-[#0a0d12] hover:bg-[#0a0d12]/5",
   );
 }

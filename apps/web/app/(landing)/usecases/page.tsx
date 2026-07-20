@@ -47,7 +47,7 @@ export default async function UseCasesIndexPage() {
     <>
       <div className="relative">
         <LandingHeader variant="dark" />
-        <section className="relative overflow-hidden bg-[#05070b] text-white">
+        <section className="relative overflow-hidden bg-[#09090b] text-white">
           <div className="relative z-10 mx-auto max-w-[1120px] px-4 pb-20 pt-32 text-center sm:px-6 sm:pt-40 lg:px-8 lg:pb-24">
             <h1 className="mx-auto max-w-[880px] font-[family-name:var(--font-serif)] text-[3rem] leading-[1.02] tracking-[-0.035em] drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4rem] lg:text-[5rem]">
               {text.indexTitle}
